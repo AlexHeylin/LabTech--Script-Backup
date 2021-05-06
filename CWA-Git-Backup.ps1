@@ -3,7 +3,7 @@
     Backs up all LabTech scripts.
 
 .DESCRIPTION
-    This script will export all LabTech sctipts in xml format to a specified destination.
+    This script will export all LabTech scripts in xml format to a specified destination.
     Requires the MySQL .NET connector.
 
 .LINK
@@ -48,7 +48,7 @@ Param(
     if ($PSScriptRoot -eq "") {$ScriptRoot = $psise.CurrentFile.FullPath | Split-Path} else {$ScriptRoot = $PSScriptRoot}
 
     # Redirect all output from git on stderr to stdout so posh doesn't throw lots of red text to screen
-    #$env:GIT_REDIRECT_STDERR = '2>&1'
+    $env:GIT_REDIRECT_STDERR = '2>&1'
     
     #Get/Save config info
     $ConfigFile = "$ScriptRoot\CWA-Git-Backup-Config.xml"
@@ -1444,10 +1444,10 @@ if(Test-Path $LTShareSource){
     # LTShare accessible
     # include files explicitly by extension
     # exclude Uploads dir and any dirs that start with a dot
-    if($Verbose){Log-Write -FullLogPath $FullLogPath -LineValue "Robocopy beginning. This can take a while for a large LTShare"}
+    Log-Write -FullLogPath $FullLogPath -LineValue "Copying selected files from LTShare. This can take a while for a large LTShare"
     ## for some reason the abstraction of Extension Filters into a variable makes it not function. Resolving the variables into a flat string before invoke-expression seems to fix it
     $cmd = @"
-Robocopy.exe /MIR "$LTShareSource" "$BackupPath" $LTShareExtensionFilter /XD ".*" "Uploads" /NC /MT /LOG:"$FullLogPathRobo" /R:3 /W:5 /NP /xa:H 
+Robocopy.exe /MIR "$LTShareSource" "$BackupPath" $LTShareExtensionFilter /XD ".*" "Uploads" "System Volume Information" /NC /MT /LOG:"$FullLogPathRobo" /R:3 /W:5 /NP /xa:H 
 "@		
     invoke-expression $cmd
 }else{
@@ -1505,7 +1505,7 @@ if($Searches.count -gt 0){
 ###########################
 
 if(Test-Path "$BackupRoot\.git"){
-    "Git repo found, doing a push"
+    "Git repo found, committing changes"
 #    $null = git.exe config --global core.safecrlf false  # Pretty certain this breaks .md files from rendering when pushed to Gitlab repo. 
     # Redirect all output from git on stderr to stdout as git's default config makes no sense on Windows
     #$env:GIT_REDIRECT_STDERR = '2>&1'
@@ -1525,10 +1525,11 @@ if(Test-Path "$BackupRoot\.git"){
                             @{n='User';e={(Get-Content $_.fullname | select -f 2 | select -l 1 | %{$_.split(":")[1].trim()})}}
     }
 
-### push a commit for each LT user that modified scripts
+### make a commit for each LT user that modified scripts
     if($ForceFullExport){
         ## not doing individual commits on initial backup
-        git.exe add .\
+        #git.exe add .\
+        git.exe add --all 
         $commitString = "CWA Scripts initial commit"
         if($Verbose){Log-Write -FullLogPath $FullLogPath -LineValue "committing $commitString"}
         $null = git.exe commit -m "$commitString"
@@ -1549,7 +1550,7 @@ if(Test-Path "$BackupRoot\.git"){
 
     if($ForceFullExport){
         ## not doing individual commits on initial backup
-        git.exe add .\
+        git.exe add --all
         $commitString = "LTShare initial commit"
         if($Verbose){Log-Write -FullLogPath $FullLogPath -LineValue "committing $commitString"}
         $null = git.exe commit -m "$commitString"
@@ -1596,7 +1597,7 @@ if(Test-Path "$BackupRoot\.git"){
         }
     }
 
-### finalize git push
+### finalize git commits
     if($Verbose){Log-Write -FullLogPath $FullLogPath -LineValue "Finalizing commits and adding any straggler files"}
     # Build default README.md if it doesn't exist
     if($(Get-Content "README.md" -ErrorAction SilentlyContinue | Measure-Object).count -gt 1){
@@ -1630,7 +1631,7 @@ Various DB properties/schema as well as CWA system definitions (groups, searches
     ## very inefficient, hope to get rid of this one day
     git.exe add --all | Out-Null
     git.exe commit -m "Various files" | Out-Null
-
+    if($Verbose){Log-Write -FullLogPath $FullLogPath -LineValue "git commits are all done, pushing to remote"}
     git.exe push 
 }else{
     "[$BackupRoot] is not a git repo - skipping all git actions"
