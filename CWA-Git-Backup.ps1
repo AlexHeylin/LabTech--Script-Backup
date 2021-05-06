@@ -14,7 +14,7 @@
     Default values -
     Log file stored in: $($env:windir)\LTScv\Logs\LT-ScriptExport.log
     Scripts exported to: $($env:windir)\Program Files(x86)\LabTech\Backup\Scripts
-    Credentials file: $PSScriptRoot
+    Credentials file: $ScriptRoot
 
 .NOTES
     Version:        1.0
@@ -44,11 +44,14 @@ Param(
     
     $ErrorActionPreference = "Stop"
 
+    # Hack to handle ISE leaving $ScriptRoot blank
+    if ($PSScriptRoot -eq "") {$ScriptRoot = $psise.CurrentFile.FullPath | Split-Path} else {$ScriptRoot = $PSScriptRoot}
+
     # Redirect all output from git on stderr to stdout so posh doesn't throw lots of red text to screen
     #$env:GIT_REDIRECT_STDERR = '2>&1'
     
     #Get/Save config info
-    $ConfigFile = "$PSScriptRoot\CWA-Git-Backup-Config.xml"
+    $ConfigFile = "$ScriptRoot\CWA-Git-Backup-Config.xml"
     if($(Test-Path $ConfigFile) -eq $false) {
         #Config file template
 ## DBSchemaExclusions - an array of regex to match. If matching, the whole match is removed
@@ -88,7 +91,7 @@ Param(
             }
             $Config.Settings.MySQLHost = "$(Read-Host "FQDN of LabTech DB Server [$default]")"
             if ($Config.Settings.MySQLHost -eq '') {$Config.Settings.MySQLHost = $default}
-            $default = $PSScriptRoot
+            $default = $ScriptRoot
             $Config.Settings.CredPath = "$(Read-Host "Path of credentials [$default]")"
             if ($Config.Settings.CredPath -eq '') {$Config.Settings.CredPath = $default}
             # Pull LTShare location from registry if possible, else default to default setting.
@@ -1204,6 +1207,109 @@ Function Rebuild-GitConfig {
 
 }
 
+
+
+
+Function Update-TableOfContentsSearches {
+    <#
+    .SYNOPSIS
+        Creates a table of contents for the LT searches. This will capture search moves as well as provide links to the search xml
+
+             
+    .PARAMETER FileName
+        Full name of ToC file. 
+
+    .NOTES
+        
+  
+    .EXAMPLE
+        Update-TableOfContentsSearches -FileName c:\test\ToC.md
+    #>
+
+    [CmdletBinding()]
+        Param(
+        [Parameter(Mandatory=$True,Position=1)]
+        [string]$FileName
+    )
+
+    "## Use this table of contents to jump to details of a search" | Out-File $FileName 
+    $ToCData = @()
+
+    ## output all searches at base of scrisearchpt tree above all other folders
+    $FolderScripts = Get-SQLData -query "SELECT * FROM sensorchecks WHERE FolderID=0 ORDER BY Name "
+    foreach($FolderScript in $FolderScripts){
+        $LastUser = $FolderScript.Last_User.Substring(0, $FolderScript.Last_User.IndexOf('@'))
+        $ScriptPath = "$([math]::floor($FolderScript.ScriptID / 50) * 50)/$($FolderScript.ScriptID).unpacked.xml"
+        $LastDate = $FolderScript.Last_Date.ToString("yyyy-MM-dd_HH-mm-ss")
+        $TOCData += ">"*$Depth + ">" + "-Script: [$($FolderScript.ScriptName)]($ScriptPath) - Last Modified By: $LastUser on $LastDate" + "  "
+    }
+    
+    $ToCData += Write-FolderTreeSearches -Depth 0 -ParentID 0
+    
+    $ToCData | Out-File $FileName -Append
+}
+
+Function Write-FolderTreeSearches {
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory=$True,Position=1)]
+        [string]$Depth,
+        [Parameter(Mandatory=$True,Position=2)]
+        [string]$ParentID
+    )
+    <#
+
+Writes the folder structure in ASCII, with the initial indention of the Depth param:
++---A
+|   +---A
+|   \---B
++---B
+|   \---A
+|       \---A
+\---C
+
+    #>
+    $Folders = Get-SQLData -query "SELECT * FROM searchfolders ORDER BY name "
+    
+    foreach($Folder in $Folders){
+        # Output this folder at the right level
+        <#
+        "<details><summary>"
+        if($Folder.FolderId -ne $Folders[$Folders.count - 1].FolderID){
+            "-"*$Depth + "+" + "-" + $Folder.name
+        }else{
+            "-"*$Depth + "\" + "-" + $Folder.name
+        }
+        "</summary>"
+        ""
+        #>
+        # insert newline before each folder
+        " "
+        ">"*$Depth + $Folder.name + "  "
+
+        # Insert all folders inside of this folder
+        Write-FolderTree -Depth ($Depth + 1) -ParentID $Folder.FolderID
+        # Insert Script links
+        $FolderScripts = Get-SQLData -query "SELECT * FROM sensorchecks WHERE FolderID=$($Folder.FolderID) ORDER BY Name "
+        foreach($FolderScript in $FolderScripts){
+            $LastUser = $FolderScript.Last_User.Substring(0, $FolderScript.Last_User.IndexOf('@'))
+            $ScriptPath = "$([math]::floor($FolderScript.ScriptID / 50) * 50)/$($FolderScript.ScriptID).unpacked.xml"
+            $LastDate = $FolderScript.Last_Date.ToString("yyyy-MM-dd_HH-mm-ss")
+            ">"*$Depth + ">" + "-Script: [$($FolderScript.ScriptName)]($ScriptPath) - Last Modified By: $LastUser on $LastDate" + "  "
+        }
+        #"</details>"
+    }
+}
+
+
+
+
+
+
+
+
+
+
 #endregion
 
 #region-[Execution]------------------------------------------------------------
@@ -1234,10 +1340,10 @@ Log-Write -FullLogPath $FullLogPath -LineValue "Getting list of all scripts."
 Set-Location $BackupRoot
 if(Test-Path "$BackupRoot\.git"){
     "Git repo found, doing a pull"
-    $null = git.exe prune
+    $null = git.exe prune # In most cases, users will not need to call git prune directly, but should instead call git gc, which handles pruning along with many other housekeeping tasks.
     $null = git.exe reset --hard
-    $null = git.exe pull --rebase 
-    $null = git gc # --aggressive
+    $null = git.exe pull #--rebase 
+    $null = git gc # --aggressive  # Run housekeeping
 }
 
 if($ForceFullExport){
@@ -1290,7 +1396,7 @@ foreach ($ScriptID in $ScriptIDs) {
     Write-Progress -Activity "Backing up LT scripts to $((get-Location).path)" -Status "Processing ScriptID $($ScriptID.ScriptID)" -PercentComplete  ($n / @($ScriptIDs).count*100)
     
     # Source scriptstep metadata id mappings
-    . "$PSScriptRoot\constants.ps1"
+    . "$ScriptRoot\constants.ps1"
 
     #Export current script
     Export-LTScript -ScriptID $($ScriptID.ScriptID)
@@ -1382,17 +1488,19 @@ if($Searches.count -eq 0){
     foreach($Search in $Searches){
         Export-Search $Search
     }
+
 }
 get-ChildItem -Recurse -File | ? {($_.name -replace '\.xml','') -notin $Searches.SensID} | remove-item -Force
-
-
+if($Searches.count -gt 0){
+  #  Update-TableOfContentssearches -FileName "$BackupPath\ToC.md"
+}
 ###########################
 ## Git Commits
 ###########################
 
 if(Test-Path "$BackupRoot\.git"){
     "Git repo found, doing a push"
-    $null = git.exe config --global core.safecrlf false
+#    $null = git.exe config --global core.safecrlf false  # Pretty certain this breaks .md files from rendering when pushed to Gitlab repo. 
     # Redirect all output from git on stderr to stdout as git's default config makes no sense on Windows
     #$env:GIT_REDIRECT_STDERR = '2>&1'
 
