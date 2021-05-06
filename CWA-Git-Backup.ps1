@@ -155,8 +155,13 @@ Param(
     #MySQL connection info
     $MySQLDatabase = $Config.Settings.MySQLDatabase
     $MySQLHost = $Config.Settings.MySQLHost
-    $MySQLAdminPassword = (IMPORT-CLIXML $CredFile).GetNetworkCredential().Password
-    $MySQLAdminUserName = (IMPORT-CLIXML $CredFile).GetNetworkCredential().UserName
+    
+    try {
+        $MySQLAdminPassword = (IMPORT-CLIXML $CredFile).GetNetworkCredential().Password
+        $MySQLAdminUserName = (IMPORT-CLIXML $CredFile).GetNetworkCredential().UserName
+    } catch {
+        Write-Error "ERROR: Unable to decode DB credential file. Most likely you're not the Windows user that created it. Log in as that user and try again."
+    }
 
 
     if($ForceFullExport){
