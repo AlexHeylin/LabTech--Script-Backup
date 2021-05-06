@@ -160,7 +160,7 @@ Param(
         $MySQLAdminPassword = (IMPORT-CLIXML $CredFile).GetNetworkCredential().Password
         $MySQLAdminUserName = (IMPORT-CLIXML $CredFile).GetNetworkCredential().UserName
     } catch {
-        Write-Error "ERROR: Unable to decode DB credential file. Most likely you're not the Windows user that created it. Log in as that user and try again."
+        Write-Error "ERROR: Unable to decrypt DB credential file. Most likely you're not the Windows user that created it. Log in as that user and try again."
     }
 
 
