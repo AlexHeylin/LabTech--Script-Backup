@@ -222,7 +222,8 @@ Function Export-DBSchema {
             
         }
         ## exclude empty strings
-        $FileContentReal | ? {$_ -ne ''} | Out-File -Force $filename
+        $content = $FileContentReal | ? {$_ -ne ''}
+        [IO.File]::WriteAllLines($filename, $content)
         
     }
     get-ChildItem $BackupPath -File | ? {($_.name -replace '\.sql','') -notin $rows.$nameCol} | remove-item -Force
@@ -771,8 +772,9 @@ Function Update-TableOfContents {
         [string]$FileName
     )
 
-    "## Use this table of contents to jump to details of a script" | Out-File $FileName 
+    
     $ToCData = @()
+    $ToCata += "## Use this table of contents to jump to details of a script"
 
     ## output all scripts at base of script tree above all other folders
     $FolderScripts = Get-SQLData -query "SELECT * FROM lt_scripts WHERE FolderID=0 ORDER BY ScriptName "
@@ -784,9 +786,9 @@ Function Update-TableOfContents {
     }
     
     $ToCData += Write-FolderTree -Depth 0 -ParentID 0
+    [IO.File]::WriteAllLines($filename, $ToCData)
 
-    
-    $ToCData | Out-File $FileName -Append
+
 }
 
 Function Write-FolderTree {
@@ -1238,10 +1240,10 @@ Function Update-TableOfContentsSearches {
         [string]$FileName
     )
 
-    "## Use this table of contents to jump to details of a search" | Out-File $FileName 
+    
     $ToCData = @()
-
-    ## output all searches at base of scrisearchpt tree above all other folders
+    $TOCData += "## Use this table of contents to jump to details of a search" 
+    ## output all searches at base of script tree above all other folders
     $FolderScripts = Get-SQLData -query "SELECT * FROM sensorchecks WHERE FolderID=0 ORDER BY Name "
     foreach($FolderScript in $FolderScripts){
         $LastUser = $FolderScript.Last_User.Substring(0, $FolderScript.Last_User.IndexOf('@'))
@@ -1251,8 +1253,7 @@ Function Update-TableOfContentsSearches {
     }
     
     $ToCData += Write-FolderTreeSearches -Depth 0 -ParentID 0
-    
-    $ToCData | Out-File $FileName -Append
+    [IO.File]::WriteAllLines($filename, $ToCData)
 }
 
 Function Write-FolderTreeSearches {
@@ -1603,7 +1604,7 @@ if(Test-Path "$BackupRoot\.git"){
     if($(Get-Content "README.md" -ErrorAction SilentlyContinue | Measure-Object).count -gt 1){
         # Readme contains more than one line of content. not rebuilding
     }else{
-        @"
+        $ReadmeContent = @"
 ## CWA System Versioning
 
 This repo should contain xml files from all scripts in the CWA system. If the export runs on a schedule, the commit history should provide clean auditing of changes to the scripts over time. Each script is represented by two files
@@ -1621,7 +1622,8 @@ The scripts are sorted into folders based on their script ID, and [a table of co
 
 Various DB properties/schema as well as CWA system definitions (groups, searches, etc) are also backed up here
 
-"@ | Out-File "$BackupRoot\README.md"
+"@ 
+        [IO.File]::WriteAllLines("$BackupRoot\README.md", $ReadmeContent)
         git.exe add "$BackupRoot\README.md"
         git.exe commit -m "Add README" | Out-Null
     }    
