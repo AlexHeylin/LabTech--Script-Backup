@@ -122,6 +122,7 @@ Param(
         if(Test-Path HKLM:\SOFTWARE\LabTech\Agent){
             $response = read-host "DB Agent found on this machine, get credentials from registry? [y/n] "
             if($response -eq 'y'){
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
                 Invoke-WebRequest -UseBasicParsing https://bit.ly/ltposh | Invoke-Expression
                 $Pass = (get-itemproperty -path "HKLM:\SOFTWARE\LabTech\Agent" -name "MySQLPass").MySQLPass
                 $PlaintextPass = ConvertFrom-LTSecurity $Pass
